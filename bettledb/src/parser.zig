@@ -17,11 +17,19 @@ const ASTNodeType = enum {
     Literal,
 };
 
-const ColumnType = enum {
+// const ColumnType = enum {
+//     Integer,
+//     Varchar,
+//     Text,
+//     Decimal,
+//     Datetime,
+// };
+
+const ColumnType = union(enum) {
     Integer,
-    Varchar,
+    Varchar: u64,
     Text,
-    Decimal,
+    Decimal: struct { precision: u32, scale: u32 },
     Datetime,
 };
 
@@ -33,11 +41,12 @@ const ColumnConstraint = enum {
 
 const data_pairs = [_]struct { []const u8, ColumnType }{
     .{ "INTEGER", .Integer },
-    .{ "VARCHAR", .Varchar },
+    .{ "VARCHAR", .{ .Varchar = 255 } },
     .{ "TEXT", .Text },
-    .{ "DECIMAL", .Decimal },
+    .{ "DECIMAL", .{ .Decimal = .{ .precision = 0, .scale = 0 } } },
     .{ "DATETIME", .Datetime },
 };
+
 const constraint_pairs = [_]struct { []const u8, ColumnConstraint }{
     .{ "PRIMARY", .PrimaryKey },
     .{ "NOT", .NotNull },
@@ -188,19 +197,40 @@ const Parser = struct {
             switch (columnType) {
                 .Varchar => {
                     try self.consumeToken(.LeftParen);
-                    _ = try self.consumeToken(.Number); // Ignore size for now
+                    const num = self.current_token.value;
+
+                    try self.consumeToken(.Number);
                     try self.consumeToken(.RightParen);
+
+                    const size = try std.fmt.parseInt(u64, num, 10);
+                    return .{ .Varchar = size };
                 },
                 .Decimal => {
                     try self.consumeToken(.LeftParen);
-                    _ = try self.consumeToken(.Number); // Precision
+
+                    const _precision = self.current_token.value;
+                    try self.consumeToken(.Number); // Precison
+
                     try self.consumeToken(.Comma);
-                    _ = try self.consumeToken(.Number); // Scale
+
+                    const _scale = self.current_token.value;
+                    try self.consumeToken(.Number); // Scale
                     try self.consumeToken(.RightParen);
+
+                    const precision = try std.fmt.parseInt(u32, _precision, 10);
+                    const scale = try std.fmt.parseInt(u32, _scale, 10);
+
+                    return .{ .Decimal = .{ .precision = precision, .scale = scale } };
                 },
-                .Integer => {},
-                .Text => {},
-                .Datetime => {},
+                .Integer => {
+                    return .Integer;
+                },
+                .Text => {
+                    return .Text;
+                },
+                .Datetime => {
+                    return .Datetime;
+                },
             }
             return columnType;
         }
