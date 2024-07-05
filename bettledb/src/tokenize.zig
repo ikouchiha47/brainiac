@@ -32,7 +32,7 @@ pub const Lexer = struct {
     read_position: usize,
     ch: u8,
 
-    fn init(input: []const u8) Lexer {
+    pub fn init(input: []const u8) Lexer {
         var lexer = Lexer{
             .input = input,
             .position = 0,
@@ -53,7 +53,7 @@ pub const Lexer = struct {
         self.read_position += 1;
     }
 
-    fn nextToken(self: *Lexer) Token {
+    pub fn nextToken(self: *Lexer) Token {
         self.skipWhitespace();
 
         const token: Token = switch (self.ch) {
