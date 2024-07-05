@@ -120,25 +120,33 @@ const Parser = struct {
         var node = try ASTNode.init(self.allocator, .CreateTable);
         errdefer node.deinit();
 
+        // std.debug.print("start create table\n", .{});
         try self.consumeKeyword("CREATE");
         try self.consumeKeyword("TABLE");
+        // std.debug.print("end create table\n", .{});
 
         var tableName = try ASTNode.init(self.allocator, .TableName);
+        // std.debug.print("start table name parsing\n", .{});
+
         tableName.value = try self.consumeIdentifier();
+
         try node.children.append(tableName);
 
         try self.consumeToken(.LeftParen);
+        // std.debug.print("left paren\n", .{});
 
         while (self.current_token.type != .RightParen) {
+            // std.debug.print("start parse column {s}\n", .{self.current_token.value});
             const columnDef = try self.parseColumnDef();
             try node.children.append(columnDef);
+            // std.debug.print("end parse column {s}\n", .{self.current_token.value});
 
             if (self.current_token.type == .Comma) {
                 self.nextToken();
             } else break;
         }
 
-        std.debug.print("token {}\n", .{self.current_token});
+        // std.debug.print("token {}\n", .{self.current_token});
 
         try self.consumeToken(.RightParen);
         try self.consumeToken(.Semicolon);
@@ -337,7 +345,7 @@ const Parser = struct {
 };
 
 test "Parser - CREATE TABLE statement success" {
-    const input = "CREATE TABLE users (id INT, name VARCHAR(255), age INT);";
+    const input = "CREATE TABLE users (id INTEGER, name VARCHAR(255), age INTEGER);";
     var lexer = t.Lexer.init(input);
     var parser = try Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
