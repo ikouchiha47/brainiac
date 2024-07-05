@@ -24,7 +24,7 @@ pub const Token = struct {
     value: []const u8,
 };
 
-const Keywords = [_][]const u8{ "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "CREATE", "TABLE", "PRIMARY", "KEY", "UNIQUE", "IF", "NOT", "EXISTS" };
+const Keywords = [_][]const u8{ "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "CREATE", "TABLE", "IF", "EXISTS", "KEY", "NULL" };
 
 pub const Lexer = struct {
     input: []const u8,
@@ -103,12 +103,6 @@ pub const Lexer = struct {
         self.read_position -= 1;
         const value = self.input[start_position..self.position];
 
-        // var token_type: TokenType = undefined;
-        // if (isKeyword(value)) {
-        //     token_type = .Keyword;
-        // } else {
-        //     token_type = .Identifier;
-        // }
         // const token_type = if (isKeyword(value)) .Keyword else .Identifier;
         const token_type = blk: {
             if (isKeyword(value)) {
@@ -141,16 +135,21 @@ test "CREATE TABLE statement - success" {
 
     var lexer = Lexer.init(input);
 
+    // create table users (
     try testing.expectEqual(TokenType.Keyword, lexer.nextToken().type);
     try testing.expectEqual(TokenType.Keyword, lexer.nextToken().type);
     try testing.expectEqual(TokenType.Identifier, lexer.nextToken().type);
     try testing.expectEqual(TokenType.LeftParen, lexer.nextToken().type);
+    // id INT PRIMARY
     try testing.expectEqual(TokenType.Identifier, lexer.nextToken().type);
     try testing.expectEqual(TokenType.Identifier, lexer.nextToken().type);
-    try testing.expectEqual(TokenType.Keyword, lexer.nextToken().type);
+    try testing.expectEqual(TokenType.Identifier, lexer.nextToken().type);
+    // key ,
     try testing.expectEqual(TokenType.Keyword, lexer.nextToken().type);
     try testing.expectEqual(TokenType.Comma, lexer.nextToken().type);
+    // name
     try testing.expectEqual(TokenType.Identifier, lexer.nextToken().type);
+    // VARCHAR
     try testing.expectEqual(TokenType.Identifier, lexer.nextToken().type);
     try testing.expectEqual(TokenType.LeftParen, lexer.nextToken().type);
     try testing.expectEqual(TokenType.Number, lexer.nextToken().type);

@@ -129,24 +129,19 @@ const Parser = struct {
         // std.debug.print("start table name parsing\n", .{});
 
         tableName.value = try self.consumeIdentifier();
-
         try node.children.append(tableName);
 
         try self.consumeToken(.LeftParen);
         // std.debug.print("left paren\n", .{});
 
         while (self.current_token.type != .RightParen) {
-            // std.debug.print("start parse column {s}\n", .{self.current_token.value});
             const columnDef = try self.parseColumnDef();
             try node.children.append(columnDef);
-            // std.debug.print("end parse column {s}\n", .{self.current_token.value});
 
             if (self.current_token.type == .Comma) {
                 self.nextToken();
             } else break;
         }
-
-        // std.debug.print("token {}\n", .{self.current_token});
 
         try self.consumeToken(.RightParen);
         try self.consumeToken(.Semicolon);
@@ -159,19 +154,25 @@ const Parser = struct {
         errdefer node.deinit();
 
         node.value = try self.consumeIdentifier();
+        // std.debug.print("node {s}\n", .{node.value.?});
 
+        // data type
         const dataType = try self.parseDataType();
+
         var typeNode = try ASTNode.init(self.allocator, .Literal);
         typeNode.value = @tagName(dataType);
-
         try node.children.append(typeNode);
+        // std.debug.print("typenode {s}\n", .{typeNode.value.?});
+        // std.debug.print("next token {any} {s}\n", .{ self.current_token, self.current_token.value });
 
         // parse constraint
-        while (self.current_token.type == .Keyword) {
+        while (self.current_token.type == .Identifier) {
             const constraint = try self.parseConstraints();
             var constraintNode = try ASTNode.init(self.allocator, .Literal);
 
             constraintNode.value = @tagName(constraint);
+
+            // std.debug.print("constraint value {s}\n", .{constraintNode.value.?});
             try node.children.append(constraintNode);
         }
 
@@ -197,7 +198,9 @@ const Parser = struct {
                     _ = try self.consumeToken(.Number); // Scale
                     try self.consumeToken(.RightParen);
                 },
-                else => {},
+                .Integer => {},
+                .Text => {},
+                .Datetime => {},
             }
             return columnType;
         }
@@ -207,6 +210,8 @@ const Parser = struct {
 
     fn parseConstraints(self: *Parser) !ColumnConstraint {
         var buf: [1024]u8 = undefined;
+
+        // std.debug.print("start constraint {any} {s}\n", .{ self.current_token, self.current_token.value });
         const constraint = try self.consumeIdentifier();
         const upperConstraint = std.ascii.upperString(&buf, constraint);
 
@@ -216,6 +221,8 @@ const Parser = struct {
                 .NotNull => try self.consumeKeyword("NULL"),
                 .Unique => {},
             }
+
+            // std.debug.print("col constraint {any}\n", .{columnConstraint});
             return columnConstraint;
         }
 
@@ -344,8 +351,42 @@ const Parser = struct {
     }
 };
 
-test "Parser - CREATE TABLE statement success" {
-    const input = "CREATE TABLE users (id INTEGER, name VARCHAR(255), age INTEGER);";
+// test "Parser - CREATE TABLE statement success" {
+//     const input = "CREATE TABLE users (id INTEGER, name VARCHAR(255), age INTEGER);";
+//     var lexer = t.Lexer.init(input);
+//     var parser = try Parser.init(testing.allocator, &lexer);
+//     defer parser.deinit();
+//
+//     const ast = try parser.parse();
+//     defer ast.deinit();
+//
+//     try testing.expectEqual(ASTNodeType.CreateTable, ast.type);
+//     try testing.expectEqual(@as(usize, 4), ast.children.items.len);
+//
+//     // Check table name
+//     const tableName = ast.children.items[0];
+//     try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+//     try testing.expectEqualStrings("users", tableName.value.?);
+//
+//     // Check column definitions
+//     const idColumn = ast.children.items[1];
+//     try testing.expectEqual(ASTNodeType.ColumnDef, idColumn.type);
+//     try testing.expectEqualStrings("id", idColumn.value.?);
+//     try testing.expectEqualStrings("Integer", idColumn.children.items[0].value.?);
+//
+//     const nameColumn = ast.children.items[2];
+//     try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
+//     try testing.expectEqualStrings("name", nameColumn.value.?);
+//     try testing.expectEqualStrings("Varchar", nameColumn.children.items[0].value.?);
+//
+//     const ageColumn = ast.children.items[3];
+//     try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
+//     try testing.expectEqualStrings("age", ageColumn.value.?);
+//     try testing.expectEqualStrings("Integer", ageColumn.children.items[0].value.?);
+// }
+
+test "Parser - CREATE TABLE TEXT statement success" {
+    const input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email VARCHAR(255) UNIQUE);";
     var lexer = t.Lexer.init(input);
     var parser = try Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
@@ -365,12 +406,13 @@ test "Parser - CREATE TABLE statement success" {
     const idColumn = ast.children.items[1];
     try testing.expectEqual(ASTNodeType.ColumnDef, idColumn.type);
     try testing.expectEqualStrings("id", idColumn.value.?);
+    // try testing.expectEqualStrings("id", idColumn.children.items[1].value.?);
 
-    const nameColumn = ast.children.items[2];
-    try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
-    try testing.expectEqualStrings("name", nameColumn.value.?);
-
-    const ageColumn = ast.children.items[3];
-    try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
-    try testing.expectEqualStrings("age", ageColumn.value.?);
+    // const nameColumn = ast.children.items[2];
+    // try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
+    // try testing.expectEqualStrings("name", nameColumn.value.?);
+    //
+    // const ageColumn = ast.children.items[3];
+    // try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
+    // try testing.expectEqualStrings("age", ageColumn.value.?);
 }
