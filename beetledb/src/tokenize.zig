@@ -13,9 +13,12 @@ pub const TokenType = enum {
     RightParen,
     Greater,
     Lesser,
-    Semicolon,
     Equals,
+    GreaterEquals,
+    LesserEquals,
+    NotEquals,
     Star,
+    Semicolon,
     EOF,
 };
 
@@ -53,6 +56,14 @@ pub const Lexer = struct {
         self.read_position += 1;
     }
 
+    fn peekChar(self: *Lexer) u8 {
+        if (self.read_position >= self.input.len) {
+            return 0;
+        } else {
+            return self.input[self.read_position];
+        }
+    }
+
     pub fn nextToken(self: *Lexer) Token {
         self.skipWhitespace();
 
@@ -60,10 +71,29 @@ pub const Lexer = struct {
             ',' => .{ .type = .Comma, .value = "," },
             '(' => .{ .type = .LeftParen, .value = "(" },
             ')' => .{ .type = .RightParen, .value = ")" },
-            '>' => .{ .type = .Greater, .value = ">" },
-            '<' => .{ .type = .Lesser, .value = "<" },
-            ';' => .{ .type = .Semicolon, .value = ";" },
+            '>' => blk: {
+                if (self.peekChar() == '=') {
+                    self.readChar();
+                    break :blk .{ .type = .GreaterEquals, .value = ">=" };
+                }
+                break :blk .{ .type = .Greater, .value = ">" };
+            },
+            '<' => blk: {
+                if (self.peekChar() == '=') {
+                    self.readChar();
+                    break :blk .{ .type = .LesserEquals, .value = "<=" };
+                }
+                break :blk .{ .type = .Lesser, .value = "<" };
+            },
             '=' => .{ .type = .Equals, .value = "=" },
+            '!' => blk: {
+                if (self.peekChar() == '=') {
+                    self.readChar();
+                    break :blk .{ .type = .NotEquals, .value = "<=" };
+                }
+                break :blk .{ .type = .EOF, .value = "ILLEGAL" };
+            },
+            ';' => .{ .type = .Semicolon, .value = ";" },
             '*' => .{ .type = .Star, .value = "*" },
             '"', '\'' => self.readString(),
             '0'...'9' => self.readNumber(),
