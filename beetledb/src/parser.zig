@@ -62,6 +62,7 @@ pub const ASTNode = struct {
         return ASTNode{
             .type = nodeType,
             .children = ArrayList(ASTNode).init(allocator),
+            .value = null,
         };
     }
 
@@ -83,7 +84,10 @@ const Parser = struct {
 
     fn init(allocator: Allocator, lexer: *t.Lexer) !Parser {
         var data_type_map = std.StringHashMap(ColumnType).init(allocator);
+        // errdefer data_type_map.deinit();
+
         var constraint_map = std.StringHashMap(ColumnConstraint).init(allocator);
+        // errdefer constraint_map.deinit();
 
         for (data_pairs) |pair| {
             try data_type_map.put(pair[0], pair[1]);
@@ -139,6 +143,7 @@ const Parser = struct {
         // std.log.info("end create table\n", .{});
 
         var tableName = try ASTNode.init(self.allocator, .TableName);
+        errdefer tableName.deinit();
         // std.log.info("start table name parsing\n", .{});
 
         tableName.value = try self.consumeIdentifier();
@@ -173,6 +178,8 @@ const Parser = struct {
         const dataType = try self.parseDataType();
 
         var typeNode = try ASTNode.init(self.allocator, .Literal);
+        errdefer typeNode.deinit();
+
         typeNode.value = @tagName(dataType);
         try node.children.append(typeNode);
         // std.log.info("typenode {s}\n", .{typeNode.value.?});
@@ -182,6 +189,7 @@ const Parser = struct {
         while (self.current_token.type == .Identifier) {
             const constraint = try self.parseConstraints();
             var constraintNode = try ASTNode.init(self.allocator, .Literal);
+            errdefer constraintNode.deinit();
 
             constraintNode.value = @tagName(constraint);
 
@@ -311,10 +319,12 @@ const Parser = struct {
             try node.children.append(columnList);
         }
 
-        std.debug.print("consuming from\n", .{});
+        // // std.debug.print("consuming from\n", .{});
         try self.consumeKeyword("FROM");
 
         var tableName = try ASTNode.init(self.allocator, .TableName);
+        errdefer tableName.deinit();
+
         tableName.value = try self.consumeIdentifier();
         try node.children.append(tableName);
 
@@ -335,6 +345,8 @@ const Parser = struct {
 
         while (self.current_token.type == .Identifier) {
             var column = try ASTNode.init(self.allocator, .Literal);
+            errdefer column.deinit();
+
             column.value = self.current_token.value;
 
             // column.value = try self.consumeIdentifier();
@@ -361,6 +373,8 @@ const Parser = struct {
 
         while (self.current_token.type != .RightParen) {
             var value = try ASTNode.init(self.allocator, .Literal);
+            errdefer value.deinit();
+
             value.value = switch (self.current_token.type) {
                 .String, .Number => blk: {
                     const val = self.current_token.value;
@@ -397,14 +411,17 @@ const Parser = struct {
         // parseComparison (age > 18)
         // operator: AND/OR
         // parseComparison name='John'
-        const leftexpr = try self.parseComparison();
-        const value = self.current_token.value;
 
         var node = try ASTNode.init(self.allocator, .BinaryExpression);
+        errdefer node.deinit();
+
+        const leftexpr = try self.parseComparison();
+        try node.children.append(leftexpr);
+
+        const value = self.current_token.value;
 
         if (std.ascii.eqlIgnoreCase(value, "and") or std.ascii.eqlIgnoreCase(value, "or")) {
             node.value = self.current_token.value;
-            try node.children.append(leftexpr);
 
             self.nextToken(); // consume the operator
 
@@ -431,6 +448,8 @@ const Parser = struct {
         const right = try self.parseExpression();
 
         var node = try ASTNode.init(self.allocator, .Comparison);
+        errdefer node.deinit();
+
         node.value = operator;
 
         try node.children.append(left);
@@ -441,8 +460,10 @@ const Parser = struct {
 
     // age , 18, name , 'John'
     fn parseExpression(self: *Parser) !ASTNode {
-        std.debug.print("parse expression {any} {s}\n", .{ self.current_token, self.current_token.value });
+        // std.debug.print("parse expression {any} {s}\n", .{ self.current_token, self.current_token.value });
+
         var node = try ASTNode.init(self.allocator, .Literal);
+        errdefer node.deinit();
 
         if (self.current_token.type == .Identifier) {
             node.value = try self.consumeIdentifier();
@@ -497,6 +518,30 @@ const Parser = struct {
         return value;
     }
 };
+
+test "Parser - SELECT statement success" {
+    const input = "SELECT id, name FROM users WHERE age > 18;";
+    var lexer = t.Lexer.init(input);
+    var parser = try Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    defer ast.deinit();
+
+    std.debug.print("after parse\n", .{});
+    try testing.expectEqual(ASTNodeType.Select, ast.type);
+    // try testing.expectEqual(@as(usize, 4), ast.children.items.len);
+
+    // Check table name
+    const tableName = ast.children.items[1];
+    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+    try testing.expectEqualStrings("users", tableName.value.?);
+    try testing.expectEqual(0, tableName.children.items.len);
+
+    const columnList = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
+    std.debug.print("test end\n", .{});
+}
 
 // test "Parser - CREATE TABLE statement success" {
 //     const input = "CREATE TABLE users (id INTEGER, name VARCHAR(255), age INTEGER);";
@@ -565,27 +610,3 @@ const Parser = struct {
 //     try testing.expectEqualStrings("email", ageColumn.value.?);
 //     try testing.expectEqualStrings(@tagName(ColumnConstraint.Unique), ageColumn.children.items[1].value.?);
 // }
-
-test "Parser - SELECT statement success" {
-    const input = "SELECT id, name FROM users WHERE age > 18;";
-    var lexer = t.Lexer.init(input);
-    var parser = try Parser.init(testing.allocator, &lexer);
-    defer parser.deinit();
-
-    const ast = try parser.parse();
-    defer ast.deinit();
-
-    std.debug.print("after parse\n", .{});
-    try testing.expectEqual(ASTNodeType.Select, ast.type);
-    // try testing.expectEqual(@as(usize, 4), ast.children.items.len);
-
-    // Check table name
-    const tableName = ast.children.items[1];
-    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
-    try testing.expectEqualStrings("users", tableName.value.?);
-    try testing.expectEqual(0, tableName.children.items.len);
-
-    const columnList = ast.children.items[0];
-    try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
-    std.debug.print("test end\n", .{});
-}
