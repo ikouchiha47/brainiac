@@ -270,12 +270,12 @@ const Parser = struct {
         try self.consumeKeyword("INSERT");
         try self.consumeKeyword("INTO");
 
-        std.log.info("token column list {s}\n", .{self.current_token.value});
+        // std.log.info("token column list {s}\n", .{self.current_token.value});
 
         var tableName = try ASTNode.init(self.allocator, .TableName);
         tableName.value = try self.consumeIdentifier();
         try node.children.append(tableName);
-        std.log.info("token column list {s}", .{self.current_token.value});
+        // std.log.info("token column list {s}", .{self.current_token.value});
 
         try self.consumeToken(.LeftParen);
 
@@ -306,8 +306,7 @@ const Parser = struct {
             try node.children.append(star);
             self.nextToken();
         } else {
-            std.debug.print("parsing column list {any} {s}\n", .{ self.current_token, self.current_token.value });
-
+            // std.debug.print("parsing column list {any} {s}\n", .{ self.current_token, self.current_token.value });
             const columnList = try self.parseColumnList();
             try node.children.append(columnList);
         }
@@ -319,7 +318,6 @@ const Parser = struct {
         tableName.value = try self.consumeIdentifier();
         try node.children.append(tableName);
 
-        std.debug.print("where {any} {s}\n", .{ self.current_token, tableName.value.? });
         // Check for WHERE clause
         if (std.ascii.eqlIgnoreCase(self.current_token.value, "WHERE")) {
             const whereClause = try self.parseWhereClause();
@@ -327,6 +325,7 @@ const Parser = struct {
         }
 
         try self.consumeToken(.Semicolon);
+        std.debug.print("current {any}, {s}\n", .{ self.current_token, self.current_token.value });
         return node;
     }
 
@@ -576,12 +575,17 @@ test "Parser - SELECT statement success" {
     const ast = try parser.parse();
     defer ast.deinit();
 
+    std.debug.print("after parse\n", .{});
     try testing.expectEqual(ASTNodeType.Select, ast.type);
     // try testing.expectEqual(@as(usize, 4), ast.children.items.len);
 
     // Check table name
-    const tableName = ast.children.items[0];
+    const tableName = ast.children.items[1];
     try testing.expectEqual(ASTNodeType.TableName, tableName.type);
     try testing.expectEqualStrings("users", tableName.value.?);
-    try testing.expectEqual(0, ast.children.items.len);
+    try testing.expectEqual(0, tableName.children.items.len);
+
+    const columnList = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
+    std.debug.print("test end\n", .{});
 }
