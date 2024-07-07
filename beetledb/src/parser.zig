@@ -290,8 +290,14 @@ const Parser = struct {
         try self.consumeToken(.RightParen);
 
         try self.consumeKeyword("VALUES");
-        const valueList = try self.parseValueList();
-        try node.children.append(valueList);
+
+        while (true) {
+            const valueList = try self.parseValueList();
+            try node.children.append(valueList);
+
+            if (self.current_token.type != .Comma) break;
+            self.nextToken();
+        }
 
         try self.consumeToken(.Semicolon);
 
@@ -512,6 +518,92 @@ const Parser = struct {
         return value;
     }
 };
+
+test "Parser - Insert statement" {
+    const allocator = std.testing.allocator;
+
+    // Test SQL statement
+    const sql = "INSERT INTO users (id, name, age) VALUES (1, 'John Doe', 30);";
+
+    var lexer = t.Lexer.init(sql);
+    var parser = try Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    defer ast.deinit();
+
+    // Verify the root node
+    try testing.expectEqual(ASTNodeType.Insert, ast.type);
+    try testing.expectEqual(@as(usize, 3), ast.children.items.len);
+
+    // Verify table name
+    const tableName = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+    try testing.expectEqualStrings("users", tableName.value.?);
+
+    // Verify column list
+    const columnList = ast.children.items[1];
+    try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
+    try testing.expectEqual(@as(usize, 3), columnList.children.items.len);
+    try testing.expectEqualStrings("id", columnList.children.items[0].value.?);
+    try testing.expectEqualStrings("name", columnList.children.items[1].value.?);
+    try testing.expectEqualStrings("age", columnList.children.items[2].value.?);
+
+    // Verify value list
+    const valueList = ast.children.items[2];
+    try testing.expectEqual(ASTNodeType.ValueList, valueList.type);
+    try testing.expectEqual(@as(usize, 3), valueList.children.items.len);
+    try testing.expectEqualStrings("1", valueList.children.items[0].value.?);
+    try testing.expectEqualStrings("John Doe", valueList.children.items[1].value.?);
+    try testing.expectEqualStrings("30", valueList.children.items[2].value.?);
+}
+
+test "Parser - Insert statement with multiple value sets" {
+    const allocator = std.testing.allocator;
+
+    // Test SQL statement with multiple value sets
+    const sql = "INSERT INTO users (id, name, age) VALUES (1, 'John Doe', 30), (2, 'Jane Smith', 25);";
+
+    var lexer = t.Lexer.init(sql);
+    var parser = try Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    defer ast.deinit();
+
+    // Verify the root node
+    try testing.expectEqual(ASTNodeType.Insert, ast.type);
+    try testing.expectEqual(@as(usize, 4), ast.children.items.len);
+
+    // Verify table name
+    const tableName = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+    try testing.expectEqualStrings("users", tableName.value.?);
+
+    // Verify column list
+    const columnList = ast.children.items[1];
+    try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
+    try testing.expectEqual(@as(usize, 3), columnList.children.items.len);
+    try testing.expectEqualStrings("id", columnList.children.items[0].value.?);
+    try testing.expectEqualStrings("name", columnList.children.items[1].value.?);
+    try testing.expectEqualStrings("age", columnList.children.items[2].value.?);
+
+    // Verify first value list
+    const valueList1 = ast.children.items[2];
+    try testing.expectEqual(ASTNodeType.ValueList, valueList1.type);
+    try testing.expectEqual(@as(usize, 3), valueList1.children.items.len);
+    try testing.expectEqualStrings("1", valueList1.children.items[0].value.?);
+    try testing.expectEqualStrings("John Doe", valueList1.children.items[1].value.?);
+    try testing.expectEqualStrings("30", valueList1.children.items[2].value.?);
+
+    // Verify second value list
+    const valueList2 = ast.children.items[3];
+    try testing.expectEqual(ASTNodeType.ValueList, valueList2.type);
+    try testing.expectEqual(@as(usize, 3), valueList2.children.items.len);
+    try testing.expectEqualStrings("2", valueList2.children.items[0].value.?);
+    try testing.expectEqualStrings("Jane Smith", valueList2.children.items[1].value.?);
+    try testing.expectEqualStrings("25", valueList2.children.items[2].value.?);
+}
 
 test "Parser - SELECT statement success" {
     const input = "SELECT id, name FROM users WHERE age > 18;";
