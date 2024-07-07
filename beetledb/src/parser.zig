@@ -84,10 +84,7 @@ const Parser = struct {
 
     fn init(allocator: Allocator, lexer: *t.Lexer) !Parser {
         var data_type_map = std.StringHashMap(ColumnType).init(allocator);
-        // errdefer data_type_map.deinit();
-
         var constraint_map = std.StringHashMap(ColumnConstraint).init(allocator);
-        // errdefer constraint_map.deinit();
 
         for (data_pairs) |pair| {
             try data_type_map.put(pair[0], pair[1]);
@@ -314,7 +311,6 @@ const Parser = struct {
             try node.children.append(star);
             self.nextToken();
         } else {
-            // std.debug.print("parsing column list {any} {s}\n", .{ self.current_token, self.current_token.value });
             const columnList = try self.parseColumnList();
             try node.children.append(columnList);
         }
@@ -335,7 +331,6 @@ const Parser = struct {
         }
 
         try self.consumeToken(.Semicolon);
-        std.debug.print("current {any}, {s}\n", .{ self.current_token, self.current_token.value });
         return node;
     }
 
@@ -431,6 +426,7 @@ const Parser = struct {
 
         return node;
     }
+
     // (age > 18)
     fn parseComparison(self: *Parser) !ASTNode {
         // TODO: parse parens later
@@ -439,9 +435,6 @@ const Parser = struct {
         // operator
         // parse right expression
         // right paren
-        // if (self.current_token.type == .LeftParen) {
-        //     self.nextToken();
-        // }
 
         const left = try self.parseExpression();
         const operator = try self.consumeOperator();
@@ -485,6 +478,7 @@ const Parser = struct {
             self.current_token.type == .LesserEquals or
             self.current_token.type == .GreaterEquals or
             self.current_token.type == .Greater or
+            self.current_token.type == .Equals or
             self.current_token.type == .NotEquals)
         {
             const value = self.current_token.value;
@@ -521,6 +515,7 @@ const Parser = struct {
 
 test "Parser - SELECT statement success" {
     const input = "SELECT id, name FROM users WHERE age > 18;";
+
     var lexer = t.Lexer.init(input);
     var parser = try Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
@@ -528,7 +523,6 @@ test "Parser - SELECT statement success" {
     const ast = try parser.parse();
     defer ast.deinit();
 
-    std.debug.print("after parse\n", .{});
     try testing.expectEqual(ASTNodeType.Select, ast.type);
     // try testing.expectEqual(@as(usize, 4), ast.children.items.len);
 
@@ -540,73 +534,95 @@ test "Parser - SELECT statement success" {
 
     const columnList = ast.children.items[0];
     try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
-    std.debug.print("test end\n", .{});
 }
 
-// test "Parser - CREATE TABLE statement success" {
-//     const input = "CREATE TABLE users (id INTEGER, name VARCHAR(255), age INTEGER);";
-//     var lexer = t.Lexer.init(input);
-//     var parser = try Parser.init(testing.allocator, &lexer);
-//     defer parser.deinit();
-//
-//     const ast = try parser.parse();
-//     defer ast.deinit();
-//
-//     try testing.expectEqual(ASTNodeType.CreateTable, ast.type);
-//     try testing.expectEqual(@as(usize, 4), ast.children.items.len);
-//
-//     // Check table name
-//     const tableName = ast.children.items[0];
-//     try testing.expectEqual(ASTNodeType.TableName, tableName.type);
-//     try testing.expectEqualStrings("users", tableName.value.?);
-//
-//     // Check column definitions
-//     const idColumn = ast.children.items[1];
-//     try testing.expectEqual(ASTNodeType.ColumnDef, idColumn.type);
-//     try testing.expectEqualStrings("id", idColumn.value.?);
-//     try testing.expectEqualStrings("Integer", idColumn.children.items[0].value.?);
-//
-//     const nameColumn = ast.children.items[2];
-//     try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
-//     try testing.expectEqualStrings("name", nameColumn.value.?);
-//     try testing.expectEqualStrings("Varchar", nameColumn.children.items[0].value.?);
-//
-//     const ageColumn = ast.children.items[3];
-//     try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
-//     try testing.expectEqualStrings("age", ageColumn.value.?);
-//     try testing.expectEqualStrings("Integer", ageColumn.children.items[0].value.?);
-// }
+test "Parser - SELECT statement success multiple condition" {
+    const input = "SELECT id, name FROM users WHERE age > 18 AND name='John';";
 
-// test "Parser - CREATE TABLE TEXT statement success" {
-//     const input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email VARCHAR(255) UNIQUE);";
-//     var lexer = t.Lexer.init(input);
-//     var parser = try Parser.init(testing.allocator, &lexer);
-//     defer parser.deinit();
-//
-//     const ast = try parser.parse();
-//     defer ast.deinit();
-//
-//     try testing.expectEqual(ASTNodeType.CreateTable, ast.type);
-//     try testing.expectEqual(@as(usize, 4), ast.children.items.len);
-//
-//     // Check table name
-//     const tableName = ast.children.items[0];
-//     try testing.expectEqual(ASTNodeType.TableName, tableName.type);
-//     try testing.expectEqualStrings("users", tableName.value.?);
-//
-//     // Check column definitions
-//     const idColumn = ast.children.items[1];
-//     try testing.expectEqual(ASTNodeType.ColumnDef, idColumn.type);
-//     try testing.expectEqualStrings("id", idColumn.value.?);
-//     try testing.expectEqualStrings(@tagName(ColumnConstraint.PrimaryKey), idColumn.children.items[1].value.?);
-//
-//     const nameColumn = ast.children.items[2];
-//     try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
-//     try testing.expectEqualStrings("name", nameColumn.value.?);
-//     try testing.expectEqualStrings(@tagName(ColumnConstraint.NotNull), nameColumn.children.items[1].value.?);
-//
-//     const ageColumn = ast.children.items[3];
-//     try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
-//     try testing.expectEqualStrings("email", ageColumn.value.?);
-//     try testing.expectEqualStrings(@tagName(ColumnConstraint.Unique), ageColumn.children.items[1].value.?);
-// }
+    var lexer = t.Lexer.init(input);
+    var parser = try Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    defer ast.deinit();
+
+    try testing.expectEqual(ASTNodeType.Select, ast.type);
+    // try testing.expectEqual(@as(usize, 4), ast.children.items.len);
+
+    // Check table name
+    const tableName = ast.children.items[1];
+    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+    try testing.expectEqualStrings("users", tableName.value.?);
+    try testing.expectEqual(0, tableName.children.items.len);
+
+    const columnList = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.ColumnList, columnList.type);
+}
+
+test "Parser - CREATE TABLE statement success" {
+    const input = "CREATE TABLE users (id INTEGER, name VARCHAR(255), age INTEGER);";
+    var lexer = t.Lexer.init(input);
+    var parser = try Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    defer ast.deinit();
+
+    try testing.expectEqual(ASTNodeType.CreateTable, ast.type);
+    try testing.expectEqual(@as(usize, 4), ast.children.items.len);
+
+    // Check table name
+    const tableName = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+    try testing.expectEqualStrings("users", tableName.value.?);
+
+    // Check column definitions
+    const idColumn = ast.children.items[1];
+    try testing.expectEqual(ASTNodeType.ColumnDef, idColumn.type);
+    try testing.expectEqualStrings("id", idColumn.value.?);
+    try testing.expectEqualStrings("Integer", idColumn.children.items[0].value.?);
+
+    const nameColumn = ast.children.items[2];
+    try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
+    try testing.expectEqualStrings("name", nameColumn.value.?);
+    try testing.expectEqualStrings("Varchar", nameColumn.children.items[0].value.?);
+
+    const ageColumn = ast.children.items[3];
+    try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
+    try testing.expectEqualStrings("age", ageColumn.value.?);
+    try testing.expectEqualStrings("Integer", ageColumn.children.items[0].value.?);
+}
+
+test "Parser - CREATE TABLE TEXT statement success" {
+    const input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email VARCHAR(255) UNIQUE);";
+    var lexer = t.Lexer.init(input);
+    var parser = try Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    defer ast.deinit();
+
+    try testing.expectEqual(ASTNodeType.CreateTable, ast.type);
+    try testing.expectEqual(@as(usize, 4), ast.children.items.len);
+
+    // Check table name
+    const tableName = ast.children.items[0];
+    try testing.expectEqual(ASTNodeType.TableName, tableName.type);
+    try testing.expectEqualStrings("users", tableName.value.?);
+
+    // Check column definitions
+    const idColumn = ast.children.items[1];
+    try testing.expectEqual(ASTNodeType.ColumnDef, idColumn.type);
+    try testing.expectEqualStrings("id", idColumn.value.?);
+    try testing.expectEqualStrings(@tagName(ColumnConstraint.PrimaryKey), idColumn.children.items[1].value.?);
+
+    const nameColumn = ast.children.items[2];
+    try testing.expectEqual(ASTNodeType.ColumnDef, nameColumn.type);
+    try testing.expectEqualStrings("name", nameColumn.value.?);
+    try testing.expectEqualStrings(@tagName(ColumnConstraint.NotNull), nameColumn.children.items[1].value.?);
+
+    const ageColumn = ast.children.items[3];
+    try testing.expectEqual(ASTNodeType.ColumnDef, ageColumn.type);
+    try testing.expectEqualStrings("email", ageColumn.value.?);
+    try testing.expectEqualStrings(@tagName(ColumnConstraint.Unique), ageColumn.children.items[1].value.?);
+}
