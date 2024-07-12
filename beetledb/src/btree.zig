@@ -1,82 +1,75 @@
 const std = @import("std");
-const fs = std.fs;
 const Allocator = std.mem.Allocator;
 
-const PAGE_SIZE = 4096; // Disk page size
+const Order = 4;
 
 const NodeType = enum(u8) {
     Internal,
     Leaf,
 };
 
-const Page = struct {
-    data: [PAGE_SIZE]u8,
-    number: u32,
-    // Other metadata
+const Node = struct {
+    type: NodeType,
+    num_keys: u16,
+    keys: [Order - 1]i64,
+    children: [Order]u64, // Disk offsets for child nodes
+    next: u64, // Next leaf node (for leaf nodes only)
 };
 
-const BTree = struct {
-    root_page: u32,
-    pager: *Pager,
-
-    pub fn insert(self: *BTree, key: i64, value: []const u8) !void {
-        // Implement B-tree insertion logic
-
-    }
-
-    pub fn search(self: *BTree, key: i64) !?[]const u8 {
-        // Implement B-tree search logic
-    }
-
-    pub fn delete(self: *BTree, key: i64) !void {
-        // Implement B-tree deletion logic
-    }
-
-    // Other B-tree operations
-};
-
-const Pager = struct {
+const NodeSize = @sizeOf(Node);
+pub const BPlusTree = struct {
+    root: u64, // Disk offset of root node
+    allocator: *Allocator,
     file: std.fs.File,
-    // cache: PageCache, Removed by virtue of WAL Logs
 
-    pub fn readPage(self: *Pager, page_number: u32) !*Page {
-        // Read page from disk or return from cache
+    fn readNode(self: *BPlusTree, offset: u64) !Node {
+        var node: Node = undefined;
+        _ = try self.file.seekTo(offset);
+        _ = try self.file.readAll(std.mem.asBytes(&node));
+        return node;
     }
 
-    pub fn writePage(self: *Pager, page: *Page) !void {
-        // Write page to disk and update cache
+    fn writeNode(self: *BPlusTree, offset: u64, node: *const Node) !void {
+        _ = try self.file.seekTo(offset);
+        _ = try self.file.writeAll(std.mem.asBytes(node));
     }
 
-    // Other pager operations
+    fn allocateNode(self: *BPlusTree) !u64 {
+        const offset = try self.file.getEndPos();
+        try self.file.seekTo(offset);
+        var node = Node{
+            .type = .Leaf,
+            .num_keys = 0,
+            .keys = undefined,
+            .children = undefined,
+            .next = 0,
+        };
+        try self.writeNode(offset, &node);
+        return offset;
+    }
+
+    fn insert(self: *BPlusTree, key: i64, value: u64) !void {
+        _ = self;
+        _ = key;
+        _ = value;
+    }
+
+    fn search(self: *BPlusTree, key: i64) !?u64 {
+        var node = try self.readNode(self.root);
+        while (node.type == .Internal) {
+            var i: usize = 0;
+            while (i < node.num_keys and key >= node.keys[i]) : (i += 1) {}
+            node = try self.readNode(node.children[i]);
+        }
+
+        for (node.keys[0..node.num_keys], node.children[0..node.num_keys]) |k, v| {
+            if (k == key) return v;
+        }
+
+        return null;
+    }
+
+    pub fn deinit(self: *BPlusTree) void {
+        self.file.close();
+    }
 };
-
-const Cursor = struct {
-    tree: *BTree,
-    current_page: u32,
-    current_position: u16,
-    // Other state information
-
-    pub fn next(self: *Cursor) !void {
-        // Implement logic to move to the next item
-    }
-
-    pub fn previous(self: *Cursor) !void {
-        // Implement logic to move to the previous item
-    }
-
-    // Other navigation and access methods
-};
-
-// const WAL = struct {
-//     log_file: std.fs.File,
-//
-//     pub fn appendChange(self: *WAL, change: Change) !void {
-//         // Append change to the log file
-//     }
-//
-//     pub fn checkpoint(self: *WAL) !void {
-//         // Apply changes to the main database file
-//     }
-//
-//     // Other WAL operations
-// };
