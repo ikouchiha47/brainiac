@@ -40,3 +40,15 @@ $HEXEDITOR test.sqlite3
 The thing is 0 indexed, so at position 16 and 17, we see hex 1000 and,
 from 28-31 number of pages used = 0000035F = 863 pages
 
+## Start
+
+After writing the parser, and help from a friend, I started to write the data storage part incrementally.
+Instead of a btree, implement basic saving to bytes to file.
+
+Serialize and Deserialize it.
+
+The serialization and save to file works. Test with:
+
+```shell
+cat test.db | xxd -b
+```
