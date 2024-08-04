@@ -1,4 +1,4 @@
-from typing import List, Self
+from typing import List, Self, Set
 import random
 import struct
 
@@ -16,8 +16,7 @@ class SkipNode:
     def to_bytes(self):
         result = bytearray()
         name_encoded = self.name.encode("utf-8")
-        # TODO: encode this shit
-        value_encoded = -1 if self.value is None else self.value
+        value_encoded = 0xFFFFFFFF if self.value is None else self.value
         # value_encoded = value_encoded.to_bytes(4, byteorder="little", signed=True)
         # return (
         #     struct.pack("<I", len(self.name))
@@ -28,19 +27,18 @@ class SkipNode:
         result.extend(struct.pack("<I", len(self.name)))
         result.extend(name_encoded)
         result.extend(struct.pack("<I", value_encoded))
-        return bytes(result)
+        return result
 
     @classmethod
-    def from_bytes(cls, byts):
-        b = memoryview(byts)
-        offset = 0
+    def from_bytes(cls, b, offset=0):
+        # b = memoryview(byts)
+        # offset = 0
         key_len = struct.unpack_from("<I", b, offset)[0]  # or <4b
         offset += 4
         key = b[offset : offset + key_len].tobytes().decode("utf-8")
         offset += key_len
         value = struct.unpack_from("<I", b, offset)[0]
 
-        print(key, value)
         return SkipNode(name=key, value=value)
 
 
@@ -172,8 +170,21 @@ if __name__ == "__main__":
     skipnode = SkipNode(name="a", value=10)
     data = skipnode.to_bytes()
     print(data)
-    SkipNode.from_bytes(data)
-    # skplist = SkipList(max_level=3, probab=0.5)
+    SkipNode.from_bytes(memoryview(data))
+    # skplist = SkipList(max_level=5, probab=0.5)
     # skplist.insert("a", 10).insert("b", 20).insert("c", 15).insert("d", 6)
     # skplist.print_list()
+    #
+    # nodes: Set[SkipNode] = set()
+    # queue: List[SkipNode] = [skplist.head]
+    #
+    # while len(queue) > 0:
+    #     n = queue.pop(0)
+    #     nodes.add(n)
+    #     # for fwd in n.forwards:
+    #     # if fwd:
+    #
+    #     queue.extend([fwd for fwd in n.forwards if fwd])
+    #
+    # print(skplist.level, len(nodes))
     # print(skplist.search(15), skplist.search(40))

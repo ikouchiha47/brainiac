@@ -80,3 +80,6 @@ Initial inspiration:
 - [bitmap index](https://dev.mysql.com/worklog/task/?id=1524)
 - [innodb formats](https://mariadb.com/kb/en/innodb-file-format/)
 Innodb uses per table space id.
+- [chailla db sst table, some shit](https://opensource.docs.scylladb.com/stable/architecture/sstable/sstable3/sstables-3-data-file-format.html)
+- [more memtable](https://distributeddatastore.blogspot.com/2013/08/cassandra-sstable-storage-format.html)
+- [rocksdb block format](https://github.com/facebook/rocksdb/wiki/rocksdb-blockbasedtable-format)
