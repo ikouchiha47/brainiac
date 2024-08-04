@@ -85,17 +85,16 @@ const WAL = struct {
     file: std.fs.File,
     allocator: *std.mem.Allocator,
     log_number: u16,
-    mutex: std.Thread.Mutex,
     offset: u64, // handle the 32K block offset
 
     pub fn init(allocator: *std.mem.Allocator, filename: []const u8, start_log_number: u16) !WAL {
         const file = try std.fs.cwd().createFile(filename, .{ .read = true, .truncate = false });
 
+        // .mutex = std.Thread.Mutex{},
         return WAL{
             .file = file,
             .allocator = allocator,
             .log_number = start_log_number,
-            .mutex = std.Thread.Mutex{},
             .offset = 0,
         };
     }

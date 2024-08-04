@@ -1,6 +1,6 @@
 const std = @import("std");
-const Writer = @import("memtable.zig").Writer;
-const Data = @import("memtable.zig").Data;
+const Writer = @import("writetest.zig").Writer;
+const Data = @import("writetest.zig").Data;
 
 pub fn main() !void {
     var allocator = std.heap.page_allocator;

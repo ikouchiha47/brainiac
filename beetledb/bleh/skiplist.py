@@ -9,13 +9,39 @@ class SkipNode:
         self.value = value
         self.forwards: List[Self | None] = [None] * (max_level + 1)
 
+    # each frame looks like
+    # key_length 4bytes
+    # key variable length (we could cap this)
+    # value
     def to_bytes(self):
-        # each frame looks like
-        # key_length 4bytes
-        # key variable length (we could cap this)
-        # value
         result = bytearray()
-        struct.pack("<I", len(self.name))
+        name_encoded = self.name.encode("utf-8")
+        # TODO: encode this shit
+        value_encoded = -1 if self.value is None else self.value
+        # value_encoded = value_encoded.to_bytes(4, byteorder="little", signed=True)
+        # return (
+        #     struct.pack("<I", len(self.name))
+        #     + name_encoded
+        #     + struct.pack("<d", self.value if self.value is not None else -1)
+        # )
+        # I has a standard size of 4bytes , so maybe to_bytes of 4 is not needed
+        result.extend(struct.pack("<I", len(self.name)))
+        result.extend(name_encoded)
+        result.extend(struct.pack("<I", value_encoded))
+        return bytes(result)
+
+    @classmethod
+    def from_bytes(cls, byts):
+        b = memoryview(byts)
+        offset = 0
+        key_len = struct.unpack_from("<I", b, offset)[0]  # or <4b
+        offset += 4
+        key = b[offset : offset + key_len].tobytes().decode("utf-8")
+        offset += key_len
+        value = struct.unpack_from("<I", b, offset)[0]
+
+        print(key, value)
+        return SkipNode(name=key, value=value)
 
 
 class SkipList:
@@ -143,7 +169,11 @@ class SkipList:
 
 
 if __name__ == "__main__":
-    skplist = SkipList(max_level=3, probab=0.5)
-    skplist.insert("a", 10).insert("b", 20).insert("c", 15).insert("d", 6)
-    skplist.print_list()
-    print(skplist.search(15), skplist.search(40))
+    skipnode = SkipNode(name="a", value=10)
+    data = skipnode.to_bytes()
+    print(data)
+    SkipNode.from_bytes(data)
+    # skplist = SkipList(max_level=3, probab=0.5)
+    # skplist.insert("a", 10).insert("b", 20).insert("c", 15).insert("d", 6)
+    # skplist.print_list()
+    # print(skplist.search(15), skplist.search(40))
