@@ -1,4 +1,4 @@
-## Journal
+# Journal
 
 ```shell
 $> zig init
@@ -52,3 +52,31 @@ The serialization and save to file works. Test with:
 ```shell
 cat test.db | xxd -b
 ```
+
+## WAL log
+
+The first step was to implement storing and retrieving byte data from file.
+Writing from zig and reading from [python struct pack](https://docs.python.org/3/library/struct.html).
+
+The learning here is:
+
+- Data inherently has no meaning, and it depends on the observer.
+- Struct/Class etc has no meaning outside the language.
+  You only write bytes in a particular format and read in that format.
+
+The initial code is present in `./src/writetest.zig` and `./unpacker.py`.
+
+The next step was to write the `WAL`, in `./src/wal.zig`. The format is taken from [rocksdb](https://github.com/facebook/rocksdb/tree/master/db/log_writer.h).
+The entrypoint is from `db_impl.h`, and the locking is done outside the Writer.
+
+References:
+- [search log_writer.h](https://github.com/search?q=repo%3Afacebook%2Frocksdb%20log_writer.h&type=code)
+
+## Storage
+
+Initial inspiration:
+- [innodb internals](https://blog.jcole.us/innodb/)
+- [sqlite internals](https://github.com/sqlite/sqlite/blob/master/src/btreeInt.h)
+- [bitmap index](https://dev.mysql.com/worklog/task/?id=1524)
+- [innodb formats](https://mariadb.com/kb/en/innodb-file-format/)
+Innodb uses per table space id.
