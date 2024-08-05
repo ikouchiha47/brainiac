@@ -90,7 +90,7 @@ class FileWriter:
 
     def marshal_to_page(self, skplist: SkipList):
         result = bytearray()
-        print("skiplist info", skplist.max_level, skplist.level)
+        # print("skiplist info", skplist.max_level, skplist.level)
         skplist.print_list()
 
         result.extend(MAGIC_BYTE)
@@ -143,7 +143,7 @@ class FileWriter:
             result.extend(struct.pack("<II", level, len(_nodes)))
             # result.extend(struct.pack("<I", len(_nodes)))
 
-            print("lane metadata", "level", level, "lnodes", len(_nodes))
+            # print("lane metadata", "level", level, "lnodes", len(_nodes))
 
             # bb = bytearray()
 
@@ -209,7 +209,7 @@ class FileWriter:
 
             if node.name == "head":
                 skplist.head = node
-                print("level of head", len(skplist.head.forwards))
+                # print("level of head", len(skplist.head.forwards))
 
             offset += node_bytes
             # print("index", index, "node", node.name, node.value)
@@ -237,12 +237,9 @@ class FileWriter:
             offset += len(TYPE_LANE)
             level, n_forwards = struct.unpack_from("<II", mem, offset)
             offset += 8
-            # n_forwards = struct.unpack_from("<I", mem, offset)[0]
-            # offset += 4
 
-            print("read lane metadata", "level", level, "lnodes", n_forwards)
+            # print("read lane metadata", "level", level, "lnodes", n_forwards)
             # each forward idx is 4 byte(I)
-            # offset += 4 * n_forwards
 
             curr = skplist.head
             for i in range(n_forwards):
