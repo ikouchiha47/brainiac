@@ -24,7 +24,7 @@ class SkipNode:
         result.extend(struct.pack("<I", len(self.name)))  # key length
         result.extend(name_encoded)  # key
         result.extend(struct.pack("<I", value_encoded))  # value
-        result.extend(struct.pack("<I", len(self.forwards)))  # level
+        result.extend(struct.pack("<I", self.level))  # level
         return result
 
     @classmethod
@@ -80,7 +80,7 @@ class SkipList:
             updates[i] = curr
 
         new_lvl = self._random_level()
-        # print("level", new_lvl, "value", value)
+        # print("level", new_lvl, "value", value, len(updates))
 
         # check if lvl > self.max_levels
         # then track new lanes to create for head
@@ -89,15 +89,33 @@ class SkipList:
                 updates[i] = self.head
             self.level = new_lvl
 
+        # print("new level", self.level, len(updates))
+
         node = SkipNode(key, value=value, max_level=new_lvl)
         # add the nodes at all levels, starting from 0
         # add the new nodes to the head node as well
         for lvl in range(new_lvl + 1):
             replacing = updates[lvl]
             if replacing is None:
+                print("warning: no entry found in updates")
                 continue
+
+            # print(
+            #     "before insertion",
+            #     f"{node.name}({node.value}) ->",
+            #     node.forwards[lvl] and node.forwards[lvl].name,
+            #     "replacing",
+            #     f"{replacing.name}({replacing.value}) ->",
+            #     replacing.forwards[lvl] and replacing.forwards[lvl].name,
+            # )
             node.forwards[lvl] = replacing.forwards[lvl]
             replacing.forwards[lvl] = node
+            # print(
+            #     "after insertion",
+            #     f"{node.forwards[lvl] and node.forwards[lvl].name}({node.forwards[lvl] and node.forwards[lvl].value}) ->",
+            #     "replacing",
+            #     f"{replacing.forwards[lvl] and replacing.forwards[lvl].name}({replacing.forwards[lvl] and replacing.forwards[lvl].value}) ->",
+            # )
 
         self.size += 1
 
@@ -151,15 +169,13 @@ class SkipList:
 
         result = defaultdict(list)
 
-        for i in range(self.level, -1, -1):
+        for level in range(self.level, -1, -1):
             curr = self.head
-            # while curr and curr.forwards:
-            # print("info", i, len(curr.forwards))
-            while curr and curr.forwards[i]:
-                value = curr.forwards[i].value
-                result[curr.name].append(value)
-                curr = curr.forwards[i]
-            # curr = curr.forwards[i] if curr.forwards[i] else curr.forwards[0]
+            level_repr = []
+            while curr:
+                level_repr.append(f"{curr.name}({curr.value})")
+                curr = curr.forwards[level]
+            result[f"Level {level}"] = level_repr
 
         print(json.dumps(result))
 

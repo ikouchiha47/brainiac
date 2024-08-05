@@ -1,3 +1,4 @@
+from collections import defaultdict
 import struct
 from typing import Dict, List, Set
 from skiplist import SkipList, SkipNode
@@ -39,12 +40,27 @@ EOF = b"\xee\x0f"
 # like what leveldb's block format looks like, yet utilizing the data type
 # to indicate whether its a Node, or an Index on the Level
 #
-# The layout is split into two parts
-# (DataType::Node, Index, Depth, Node1), (DataType::Node, Depth, Index, Node2)...
-# (DataType::Lane, BaseNodeIndex, FwdPointerIndices)
+#
+# The layout is split into three parts
+# Metadata:
+# Some magic number followed by some metadata
+# rn the metadata includes the last highest level
+#
+# For each Node:
+# (DataType::Node, Index, NodeDataLength, Node(KeyLength, Key, Value, Depth)), (DataType::Node, Index, NodeDataLength, Node2)...
+# For Each Level
+# (DataType::Lane, Level, LengthOfNodesAtLevel, NodeIndices)
 #
 # The layout is missing a checksum generation, and versioning.
 # but we will comeback to that later.
+#
+# The other thing to consider is how to handle incremental updates
+# if we store the present level in file
+#
+# There are a couple of ways I can think about:
+# - Peridodically use a new base line file. Basically re-saving the file
+# - Segment the file. Each file, can have its own level and data, and the storage engine can load it accordingly
+# - Any other data format, which makes use of the level for each node. Need to think on that
 #
 # We can put the Depth/Level inside the node data, because levels
 # of an already inserted node, doesn't change over time.
@@ -72,87 +88,72 @@ class FileWriter:
     def __init__(self, filename) -> None:
         self.filename = filename
 
-    # step 1, save pull list
-    # step 2, save differences
-    # step 3, split into page size chunks
-
-    # layout
-    # data_type = enum {data, lane}
-
-    # magic_byte + 0 * (page_size - len(magic_bytes))
-    # data_type_data|index|data_length|levels_count|node_encoded (deal with page numbers later)
-    #
-    # data_type_lane|level|count|node_index|fwd_index_0|fwd_node_index0|fwd_index_1|fwd_node_index1
-    # either that or,
-    # data_type_lane|level|count|node_index|fwd_index0|-1|fwd_node_index_1...
-    # will go with 2nd one for now
-    # \xEE\x0F
     def marshal_to_page(self, skplist: SkipList):
         result = bytearray()
         print("skiplist info", skplist.max_level, skplist.level)
+        skplist.print_list()
 
         result.extend(MAGIC_BYTE)
+        result.extend(struct.pack("<I", skplist.level))
         result.extend(b"\x00\x00\x00")  # estlye, for metadata and flags
 
         # maybe pad with PAGE_SIZE - len(result)
 
-        nodes: Set[SkipNode] = set()
+        nodes: Dict[SkipNode, int] = {}
         queue: List[SkipNode] = [skplist.head]
+        leveled_nodes: Dict[int, List[SkipNode]] = {}
 
-        while len(queue) > 0:
+        # using the index as level for bfs
+        index = 0
+        while queue:
             n = queue.pop(0)
-            nodes.add(n)
-            queue.extend([fwd for fwd in n.forwards if fwd and fwd not in nodes])
+            if n not in nodes:
+                nodes[n] = index
+                index += 1
+                queue.extend([fwd for fwd in n.forwards if fwd and fwd not in nodes])
 
-        for n in nodes:
-            print("written", n.value, n.name, len(n.forwards))
-
-        for index, node in enumerate(nodes):
+        for node, level in nodes.items():
             result.extend(TYPE_DATA)
-            result.extend(struct.pack("<I", index))
+            result.extend(struct.pack("<I", level))
             node_bytes = node.to_bytes()
-
-            print("nodes info", len(node.forwards))
-            # print("lll", len(node_bytes), node_bytes)
             result.extend(struct.pack("<I", len(node_bytes)))
             result.extend(node_bytes)
+            # print(
+            #     "written",
+            #     f"DataType::Node|Index({level})|Depth({node.level})|Name({node.name})|Value({node.value})",
+            # )
 
         # considering adjusting by page size
-        lnodes, node_count = list(nodes), len(nodes)
+        # lnodes, node_count = list(nodes), len(nodes)
+        # print("len forwards", [len(node.forwards) for node in lnodes])
 
-        print("len forwards", [len(node.forwards) for node in lnodes])
+        # get nodes at each level
+        # why this works? Because the forward entries won't have a
+        # None in between.
+        for level in range(skplist.level, -1, -1):
+            curr = skplist.head
+            level_repr = []
+            while curr and len(curr.forwards) > level:
+                level_repr.append(curr)
+                curr = curr.forwards[level]
+            leveled_nodes[level] = level_repr
 
-        for node in nodes:
+        for level, _nodes in leveled_nodes.items():
             result.extend(TYPE_LANE)
-            result.extend(struct.pack("<I", lnodes.index(node)))
+            result.extend(struct.pack("<II", level, len(_nodes)))
+            # result.extend(struct.pack("<I", len(_nodes)))
 
-            for fwd in node.forwards:
-                idx = 0xFFFF
-                if fwd:
-                    idx = lnodes.index(fwd)
+            print("lane metadata", "level", level, "lnodes", len(_nodes))
+
+            # bb = bytearray()
+
+            for node in _nodes:
+                idx = nodes[node] if node else 0xFFFF
+                # bb.extend(struct.pack("<I", idx))
                 result.extend(struct.pack("<I", idx))
+                # print("inserting", "DataType::Lane", level, len(_nodes), idx)
 
-        # for l in range(skplist.level + 1):
-        #     result.extend(TYPE_LANE)
-        #     result.extend(struct.pack("<I", l))
-        #     result.extend(struct.pack("<I", node_count))
-        #     # result.extend(struct.pack("<I", node_count + 1))
-        #
-        #     i = 0
-        #     for node in nodes:
-        #         result.extend(struct.pack("<I", lnodes.index(node)))
-        #
-        #         for fwd in node.forwards:
-        #             idx = 0xFFFF
-        #             if fwd:
-        #                 # idx = 0xFFFF
-        #                 # if len(node.forwards) > l and node.forwards[l]:
-        #                 idx = lnodes.index(fwd)
-        #             result.extend(struct.pack("<I", idx))
-        #
-        #         i += 1
-        #
-        #     print("nc", node_count, "level", l, "results added since", i)
+            # print("bytearr", bb, len(bb), 4 * len(_nodes))
 
         result.extend(EOF)
         return result
@@ -164,11 +165,13 @@ class FileWriter:
         if mem[:offset].tobytes() != MAGIC_BYTE:
             raise Exception("incompatible_file")
 
+        skiplist_level = struct.unpack_from("<I", mem, offset)[0]
+        offset += 4
+
         # xx = mem[offset : offset + 3]
         # print("xx", xx.tobytes())
         offset += 3
         nodes: Dict[int, SkipNode] = {}
-        lanes = []
 
         # for a pretty long table this
         # is going to takeup a lot of time
@@ -176,7 +179,10 @@ class FileWriter:
 
         # max_level is fixed, we might as well store it
         skplist = SkipList(max_level=5, probab=0.25)
+        skplist.level = skiplist_level
         # prev_offset = 0
+
+        # parsing type node
 
         while offset < len(mem):
             # print("endbyte", offset, mem[offset : offset + 2].tobytes())
@@ -186,50 +192,68 @@ class FileWriter:
                 break
 
             node_type = mem[offset : offset + len(TYPE_DATA)]
+            if node_type != TYPE_DATA:
+                print("end of data parsing", node_type)
+                break
+
             offset += len(TYPE_DATA)
             # prev_offset = offset
 
-            if node_type == TYPE_DATA:
-                # print("parsing data")
-                # print("yy", node_type.tobytes())
+            index = struct.unpack_from("<I", mem, offset)[0]
+            offset += 4
+            node_bytes = struct.unpack_from("<I", mem, offset)[0]
+            offset += 4
 
-                index = struct.unpack_from("<I", mem, offset)[0]
+            node = SkipNode.from_bytes(mem[offset : offset + node_bytes])
+            nodes[index] = node
+
+            if node.name == "head":
+                skplist.head = node
+                print("level of head", len(skplist.head.forwards))
+
+            offset += node_bytes
+            # print("index", index, "node", node.name, node.value)
+
+            # elif node_type == TYPE_LANE:
+            #     n_forwards = struct.unpack_from("<I", mem, offset)[0]
+            #     offset += 4
+            #
+            #     while offset < offset + n_forwards:
+            #         node_idx = struct.unpack_from("<I", mem, offset)[0]
+            #         offset += 4
+            #
+            #         if node_idx != 0xFFFF:
+
+        # assert mem[offset : offset + len(TYPE_LANE)] == TYPE_LANE, "expected lanes"
+        # offset += len(TYPE_LANE)
+
+        while offset < len(mem):
+            if mem[offset : offset + 2].tobytes() == EOF:
+                break
+
+            if mem[offset : offset + len(TYPE_LANE)] != TYPE_LANE:
+                break
+
+            offset += len(TYPE_LANE)
+            level, n_forwards = struct.unpack_from("<II", mem, offset)
+            offset += 8
+            # n_forwards = struct.unpack_from("<I", mem, offset)[0]
+            # offset += 4
+
+            print("read lane metadata", "level", level, "lnodes", n_forwards)
+            # each forward idx is 4 byte(I)
+            # offset += 4 * n_forwards
+
+            curr = skplist.head
+            for i in range(n_forwards):
+                nidx = struct.unpack_from("<I", mem, offset)[0]
                 offset += 4
-                node_bytes = struct.unpack_from("<I", mem, offset)[0]
-                offset += 4
 
-                node = SkipNode.from_bytes(mem[offset : offset + node_bytes])
-                nodes[index] = node
-                offset += node_bytes
-                # print("index", index, "node", node.name, node.value)
+                if nidx != 0xFFFF:
+                    curr.forwards[level] = nodes[nidx]
+                    curr = nodes[nidx]
 
-            elif node_type == TYPE_LANE:
-                base_node_idx = struct.unpack_from("<I", mem, offset)[0]
-                offset += 4
-                node = nodes[base_node_idx]
-
-                level_nodes = []
-                for i in range(node.level):
-                    idx = struct.unpack_from("<I", mem, offset)[0]
-                    offset += 4
-
-                    level_nodes.append(nodes[idx] if idx != 0xFFFF else None)
-
-                for level, fwd_node in enumerate(level_nodes):
-                    node.forwards[level] = fwd_node
-
-        print("node_count", len(nodes), nodes)
-        # print("lanes_count", len(lanes), lanes)
-
-        # we will use head as the one who n.name is head
-        # need to modify the writer to keep the indexes in order
-        # 0 for head, 1 for next, 2 for next, ... so on
-        for n in nodes.values():
-            print("reading", n.value, n.name, len(n.forwards))
-        # print("head", nodes[0].value, len(nodes[0].forwards))
-        # print("", nodes[0].value, len(nodes[0].forwards))
-        # recreate the list
-
+        skplist.print_list()
         return skplist
 
     def write_to_file(self, list):
@@ -278,3 +302,26 @@ if __name__ == "__main__":
     f.write_to_file(skplist)
 
     f.read_from_file()
+
+
+# for l in range(skplist.level + 1):
+#     result.extend(TYPE_LANE)
+#     result.extend(struct.pack("<I", l))
+#     result.extend(struct.pack("<I", node_count))
+#     # result.extend(struct.pack("<I", node_count + 1))
+#
+#     i = 0
+#     for node in nodes:
+#         result.extend(struct.pack("<I", lnodes.index(node)))
+#
+#         for fwd in node.forwards:
+#             idx = 0xFFFF
+#             if fwd:
+#                 # idx = 0xFFFF
+#                 # if len(node.forwards) > l and node.forwards[l]:
+#                 idx = lnodes.index(fwd)
+#             result.extend(struct.pack("<I", idx))
+#
+#         i += 1
+#
+#     print("nc", node_count, "level", l, "results added since", i)
