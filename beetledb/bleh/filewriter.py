@@ -10,7 +10,7 @@ PAGE_SIZE = 4096
 
 MAGIC_BYTE = b"\xde\xad\xbe\xef"
 
-TYPE_DATA = b"\xbe"
+TYPE_NODE = b"\xbe"
 TYPE_LANE = b"\xef"
 
 EOF = b"\xee\x0f"
@@ -88,10 +88,9 @@ class FileWriter:
     def __init__(self, filename) -> None:
         self.filename = filename
 
-    def marshal_to_page(self, skplist: SkipList):
+    def marshal(self, skplist: SkipList):
         result = bytearray()
-        # print("skiplist info", skplist.max_level, skplist.level)
-        skplist.print_list()
+        # skplist.print_list()
 
         result.extend(MAGIC_BYTE)
         result.extend(struct.pack("<I", skplist.level))
@@ -113,19 +112,12 @@ class FileWriter:
                 queue.extend([fwd for fwd in n.forwards if fwd and fwd not in nodes])
 
         for node, level in nodes.items():
-            result.extend(TYPE_DATA)
+            result.extend(TYPE_NODE)
             result.extend(struct.pack("<I", level))
+
             node_bytes = node.to_bytes()
             result.extend(struct.pack("<I", len(node_bytes)))
             result.extend(node_bytes)
-            # print(
-            #     "written",
-            #     f"DataType::Node|Index({level})|Depth({node.level})|Name({node.name})|Value({node.value})",
-            # )
-
-        # considering adjusting by page size
-        # lnodes, node_count = list(nodes), len(nodes)
-        # print("len forwards", [len(node.forwards) for node in lnodes])
 
         # get nodes at each level
         # why this works? Because the forward entries won't have a
@@ -133,6 +125,7 @@ class FileWriter:
         for level in range(skplist.level, -1, -1):
             curr = skplist.head
             level_repr = []
+
             while curr and len(curr.forwards) > level:
                 level_repr.append(curr)
                 curr = curr.forwards[level]
@@ -141,24 +134,16 @@ class FileWriter:
         for level, _nodes in leveled_nodes.items():
             result.extend(TYPE_LANE)
             result.extend(struct.pack("<II", level, len(_nodes)))
-            # result.extend(struct.pack("<I", len(_nodes)))
-
-            # print("lane metadata", "level", level, "lnodes", len(_nodes))
-
-            # bb = bytearray()
 
             for node in _nodes:
                 idx = nodes[node] if node else 0xFFFF
-                # bb.extend(struct.pack("<I", idx))
                 result.extend(struct.pack("<I", idx))
                 # print("inserting", "DataType::Lane", level, len(_nodes), idx)
-
-            # print("bytearr", bb, len(bb), 4 * len(_nodes))
 
         result.extend(EOF)
         return result
 
-    def marshal_from_page(self, data: bytes):
+    def unmarshal(self, data: bytes):
         offset = 4
         mem = memoryview(data)
 
@@ -168,8 +153,6 @@ class FileWriter:
         skiplist_level = struct.unpack_from("<I", mem, offset)[0]
         offset += 4
 
-        # xx = mem[offset : offset + 3]
-        # print("xx", xx.tobytes())
         offset += 3
         nodes: Dict[int, SkipNode] = {}
 
@@ -180,24 +163,18 @@ class FileWriter:
         # max_level is fixed, we might as well store it
         skplist = SkipList(max_level=5, probab=0.25)
         skplist.level = skiplist_level
-        # prev_offset = 0
 
-        # parsing type node
-
+        # parsing node TYPE_DATA
         while offset < len(mem):
-            # print("endbyte", offset, mem[offset : offset + 2].tobytes())
-            # if prev_offset == offset:
-            #     break
             if mem[offset : offset + 2].tobytes() == EOF:
                 break
 
-            node_type = mem[offset : offset + len(TYPE_DATA)]
-            if node_type != TYPE_DATA:
-                print("end of data parsing", node_type)
+            node_type = mem[offset : offset + len(TYPE_NODE)]
+            if node_type != TYPE_NODE:
+                print("end of parsing node")
                 break
 
-            offset += len(TYPE_DATA)
-            # prev_offset = offset
+            offset += len(TYPE_NODE)
 
             index = struct.unpack_from("<I", mem, offset)[0]
             offset += 4
@@ -209,24 +186,10 @@ class FileWriter:
 
             if node.name == "head":
                 skplist.head = node
-                # print("level of head", len(skplist.head.forwards))
 
             offset += node_bytes
-            # print("index", index, "node", node.name, node.value)
 
-            # elif node_type == TYPE_LANE:
-            #     n_forwards = struct.unpack_from("<I", mem, offset)[0]
-            #     offset += 4
-            #
-            #     while offset < offset + n_forwards:
-            #         node_idx = struct.unpack_from("<I", mem, offset)[0]
-            #         offset += 4
-            #
-            #         if node_idx != 0xFFFF:
-
-        # assert mem[offset : offset + len(TYPE_LANE)] == TYPE_LANE, "expected lanes"
-        # offset += len(TYPE_LANE)
-
+        # parsing levels: TYPE_LANE
         while offset < len(mem):
             if mem[offset : offset + 2].tobytes() == EOF:
                 break
@@ -242,7 +205,7 @@ class FileWriter:
             # each forward idx is 4 byte(I)
 
             curr = skplist.head
-            for i in range(n_forwards):
+            for _ in range(n_forwards):
                 nidx = struct.unpack_from("<I", mem, offset)[0]
                 offset += 4
 
@@ -250,11 +213,12 @@ class FileWriter:
                     curr.forwards[level] = nodes[nidx]
                     curr = nodes[nidx]
 
+        assert mem[offset : offset + 2] == EOF, "failed unexpectedly"
         skplist.print_list()
         return skplist
 
     def write_to_file(self, list):
-        result = self.marshal_to_page(list)
+        result = self.marshal(list)
         with open(self.filename, "wb") as f:
             print("written", len(result))
             f.write(bytes(result))
@@ -266,7 +230,7 @@ class FileWriter:
         print("reading", len(data))
         # print(data)
         # self._print_hex_list(data)
-        self.marshal_from_page(data)
+        self.unmarshal(data)
 
     def _print_hex_list(self, data):
         byte_list = list(data)
@@ -299,26 +263,3 @@ if __name__ == "__main__":
     f.write_to_file(skplist)
 
     f.read_from_file()
-
-
-# for l in range(skplist.level + 1):
-#     result.extend(TYPE_LANE)
-#     result.extend(struct.pack("<I", l))
-#     result.extend(struct.pack("<I", node_count))
-#     # result.extend(struct.pack("<I", node_count + 1))
-#
-#     i = 0
-#     for node in nodes:
-#         result.extend(struct.pack("<I", lnodes.index(node)))
-#
-#         for fwd in node.forwards:
-#             idx = 0xFFFF
-#             if fwd:
-#                 # idx = 0xFFFF
-#                 # if len(node.forwards) > l and node.forwards[l]:
-#                 idx = lnodes.index(fwd)
-#             result.extend(struct.pack("<I", idx))
-#
-#         i += 1
-#
-#     print("nc", node_count, "level", l, "results added since", i)

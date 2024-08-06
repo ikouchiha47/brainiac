@@ -10,27 +10,21 @@ class SkipNode:
         self.level = max_level + 1
         self.forwards: List[Self | None] = [None] * (max_level + 1)
 
-    # each frame looks like
-    # key_length 4bytes
-    # key variable length (we could cap this)
-    # value
     def to_bytes(self):
         result = bytearray()
         name_encoded = self.name.encode("utf-8")
         value_encoded = 0xFFFF if self.value is None else self.value
 
         # I has a standard size of 4bytes , so maybe to_bytes of 4 is not needed
-
         result.extend(struct.pack("<I", len(self.name)))  # key length
         result.extend(name_encoded)  # key
         result.extend(struct.pack("<I", value_encoded))  # value
         result.extend(struct.pack("<I", self.level))  # level
+
         return result
 
     @classmethod
     def from_bytes(cls, b, offset=0):
-        # b = memoryview(byts)
-        # offset = 0
         key_len = struct.unpack_from("<I", b, offset)[0]  # or <4b
         offset += 4
         key = b[offset : offset + key_len].tobytes().decode("utf-8")
@@ -38,9 +32,10 @@ class SkipNode:
         value = struct.unpack_from("<I", b, offset)[0]
         offset += 4
         lvl = struct.unpack_from("<I", b, offset)[0]
-        # offset += 4
 
-        return SkipNode(name=key, value=value, max_level=lvl - 1)
+        return SkipNode(
+            name=key, value=value if value != 0xFFFF else None, max_level=lvl - 1
+        )
 
 
 class SkipList:
@@ -100,22 +95,8 @@ class SkipList:
                 print("warning: no entry found in updates")
                 continue
 
-            # print(
-            #     "before insertion",
-            #     f"{node.name}({node.value}) ->",
-            #     node.forwards[lvl] and node.forwards[lvl].name,
-            #     "replacing",
-            #     f"{replacing.name}({replacing.value}) ->",
-            #     replacing.forwards[lvl] and replacing.forwards[lvl].name,
-            # )
             node.forwards[lvl] = replacing.forwards[lvl]
             replacing.forwards[lvl] = node
-            # print(
-            #     "after insertion",
-            #     f"{node.forwards[lvl] and node.forwards[lvl].name}({node.forwards[lvl] and node.forwards[lvl].value}) ->",
-            #     "replacing",
-            #     f"{replacing.forwards[lvl] and replacing.forwards[lvl].name}({replacing.forwards[lvl] and replacing.forwards[lvl].value}) ->",
-            # )
 
         self.size += 1
 
